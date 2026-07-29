@@ -2,11 +2,12 @@
 Projet CAC 40 - statistiques, beta, LSTM et GRU.
 
 Ce fichier repond aux taches du projet :
-1. lecture du fichier cac40.csv avec une seule fonction read_data ;
-2. regroupement des donnees par ticker ;
-3. calcul de statistiques et des betas ;
-4. prediction de la volatilite intraday High - Low avec LSTM et GRU ;
-5. visualisation et sauvegarde des resultats.
+  Tache 1  : lecture du fichier cac40.csv avec la fonction read_data (un seul pd.read_csv) ;
+  Tache 3  : regroupement des donnees par ticker dans un dictionnaire ;
+  Tache 4  : calcul des statistiques (prix moyen, rendements, variance, volatilite) ;
+  Tache 5  : estimation du beta et de l'alpha de Jensen par regression OLS ;
+  Tache 6  : prediction de la volatilite intraday HL avec des modeles LSTM et GRU ;
+  Tache 7  : visualisation des predictions et analyse critique des resultats.
 
 Exemple d'execution :
     python projet_cac40_lstm_gru.py --epochs 8 --lags 20
@@ -31,43 +32,17 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
 
 
-RANDOM_SEED = 42
-RISK_FREE_RATE = 0.01
+RANDOM_SEED = 42       # Fixed seed for numpy random operations
+RISK_FREE_RATE = 0.01  # Annual risk-free rate used in CAPM (Tache 5)
 
 np.random.seed(RANDOM_SEED)
 
-
-def find_default_csv_path() -> Path:
-    """
-    Find cac40.csv in the current folder or on the user's Desktop.
-
-    :return: path to cac40.csv
-    :raises FileNotFoundError: if the file is not found
-    """
-    local_path = Path("cac40.csv")
-    if local_path.exists():
-        return local_path
-
-    desktop_matches = list(
-        Path.home().glob("OneDrive - UniversitéParis-Dauphine/Bureau/cac40.csv")
-    )
-    if desktop_matches:
-        return desktop_matches[0]
-
-    raise FileNotFoundError(
-        "cac40.csv est introuvable. Placez-le dans ce dossier ou utilisez --data."
-    )
-
-
 def read_data(path: Path) -> pd.DataFrame:
     """
-    Read the CAC 40 file and prepare clean typed columns.
-
-    The project constraint asks for a function named read_data returning a
-    pandas DataFrame. The file is read only once through pd.read_csv.
+    Read the CAC 40 CSV file and return a clean typed DataFrame
 
     :param path: location of cac40.csv
-    :return: cleaned market DataFrame
+    :return: cleaned market DataFrame sorted by TICKER then DATE
     """
     data = pd.read_csv(path, sep=";", decimal=",", index_col=0)
     data = data.rename(
@@ -94,7 +69,7 @@ def read_data(path: Path) -> pd.DataFrame:
 @dataclass
 class SplitData:
     """
-    Container for train, validation and test arrays.
+    Container for train, validation and test arrays
     """
 
     x_train: np.ndarray
@@ -105,16 +80,17 @@ class SplitData:
     y_test: np.ndarray
     test_index: pd.DataFrame
     scaler: StandardScaler
+    y_scaler: StandardScaler
 
 
 class MarketAnalyzer:
     """
-    Analyse object for CAC 40 prices, returns, statistics and betas.
+    Analysis object for CAC 40 prices, returns, statistics and betas
     """
 
     def __init__(self, data: pd.DataFrame, risk_free_rate: float) -> None:
         """
-        Store the dataset and risk-free rate used in beta regressions.
+        Store the dataset and risk-free rate used in beta regressions
 
         :param data: cleaned CAC 40 DataFrame
         :param risk_free_rate: constant risk-free rate used in CAPM regression
@@ -131,14 +107,18 @@ class MarketAnalyzer:
 
     def add_returns(self) -> None:
         """
-        Add simple close-to-close returns and High-Low volatility proxy.
+        Add simple close-to-close returns and High-Low volatility proxy
         """
         self.data["RETURN"] = self.data.groupby("TICKER")["CLOSE"].pct_change()
         self.data["HL"] = self.data["HIGH"] - self.data["LOW"]
 
     def group_by_ticker(self) -> Dict[str, pd.DataFrame]:
         """
-        Group market data by ticker and store each group in a dictionary.
+        Group market data by ticker and store each group in a dictionary
+
+        Note: pandas DataFrame.groupby() is used here instead of
+        itertools.groupby() because the data is not required to be pre-sorted
+        by TICKER and pandas handles the grouping more cleanly
 
         :return: dictionary mapping tickers to their observations
         """
@@ -150,7 +130,7 @@ class MarketAnalyzer:
 
     def compute_statistics(self) -> None:
         """
-        Compute mean price, mean return, return variance and volatility.
+        Compute mean price, mean return, return variance and volatility
         """
         if not self.groups_by_ticker:
             self.group_by_ticker()
@@ -164,7 +144,7 @@ class MarketAnalyzer:
 
     def compute_market_returns(self) -> pd.Series:
         """
-        Build the market return rm,t as the average return across assets by date.
+        Build the market return rm,t as the average return across assets by date
 
         :return: daily equally weighted market return series
         """
@@ -172,7 +152,7 @@ class MarketAnalyzer:
 
     def compute_betas(self) -> None:
         """
-        Estimate alpha and beta for each asset using ri,t = alpha_i + beta_i rm,t.
+        Estimate alpha and beta for each asset
         """
         market_returns = self.compute_market_returns()
         regression_data = self.data.merge(
@@ -188,6 +168,8 @@ class MarketAnalyzer:
 
             x_market = clean_group["MARKET_RETURN"].to_numpy()
             y_asset = clean_group["RETURN"].to_numpy()
+
+            # np.polyfit(deg=1) returns [slope, intercept]; slope = beta, intercept = alpha.
             beta, alpha = np.polyfit(x_market, y_asset, deg=1)
 
             self.beta_by_ticker[ticker] = float(beta)
@@ -197,7 +179,7 @@ class MarketAnalyzer:
 
     def export_summary(self, output_dir: Path) -> pd.DataFrame:
         """
-        Save a ticker-level summary table to CSV.
+        Save a ticker-level summary table to CSV
 
         :param output_dir: directory where outputs are saved
         :return: summary DataFrame
@@ -221,12 +203,12 @@ class MarketAnalyzer:
 
 class SequenceDatasetBuilder:
     """
-    Build lagged sequences of intraday volatility for recurrent models.
+    Build lagged sequences of intraday volatility for recurrent models
     """
 
     def __init__(self, data: pd.DataFrame, lags: int) -> None:
         """
-        Save the source data and number of lagged periods.
+        Save the source data and number of lagged periods
 
         :param data: market DataFrame containing TICKER, DATE and HL columns
         :param lags: number of lagged High-Low observations in each sequence
@@ -238,7 +220,7 @@ class SequenceDatasetBuilder:
         self, ticker: str, group: pd.DataFrame
     ) -> Tuple[np.ndarray, np.ndarray, pd.DataFrame]:
         """
-        Create lagged sequences for a single ticker.
+        Create lagged sequences for a single ticker
 
         :param ticker: asset ticker
         :param group: observations of this ticker
@@ -268,7 +250,7 @@ class SequenceDatasetBuilder:
 
     def build(self) -> SplitData:
         """
-        Build chronological train, validation and test splits for all tickers.
+        Build chronological train, validation and test splits for all tickers
 
         :return: scaled arrays and metadata for the test set
         """
@@ -308,21 +290,27 @@ class SequenceDatasetBuilder:
         scaler = StandardScaler()
         scaler.fit(x_train.reshape(-1, 1))
 
+        # Dedicated scaler for the targets so that the inverse transform in
+        # predict() uses the correct mean and variance for y
+        y_scaler = StandardScaler()
+        y_scaler.fit(y_train.reshape(-1, 1))
+
         return SplitData(
             x_train=self._scale_x(x_train, scaler),
-            y_train=self._scale_y(y_train, scaler),
+            y_train=self._scale_y(y_train, y_scaler),
             x_validation=self._scale_x(x_validation, scaler),
-            y_validation=self._scale_y(y_validation, scaler),
+            y_validation=self._scale_y(y_validation, y_scaler),
             x_test=self._scale_x(x_test, scaler),
             y_test=y_test,
             test_index=test_index,
             scaler=scaler,
+            y_scaler=y_scaler,
         )
 
     @staticmethod
     def _scale_x(values: np.ndarray, scaler: StandardScaler) -> np.ndarray:
         """
-        Scale lagged sequences and add the last recurrent dimension.
+        Scale lagged sequences and add the last recurrent dimension
 
         :param values: sequence array with shape (n_samples, lags)
         :param scaler: fitted scaler
@@ -332,20 +320,20 @@ class SequenceDatasetBuilder:
         return scaled[..., np.newaxis]
 
     @staticmethod
-    def _scale_y(values: np.ndarray, scaler: StandardScaler) -> np.ndarray:
+    def _scale_y(values: np.ndarray, y_scaler: StandardScaler) -> np.ndarray:
         """
-        Scale target values with the same scaler as the lagged inputs.
+        Scale target values with a dedicated scaler fitted on the training targets
 
         :param values: target array
-        :param scaler: fitted scaler
+        :param y_scaler: scaler fitted on y_train
         :return: scaled target array
         """
-        return scaler.transform(values.reshape(-1, 1)).ravel()
+        return y_scaler.transform(values.reshape(-1, 1)).ravel()
 
 
 class RecurrentVolatilityModel:
     """
-    Wrapper around a Keras recurrent model for High-Low prediction.
+    Wrapper around a Keras recurrent model for High-Low prediction
     """
 
     def __init__(
@@ -356,7 +344,7 @@ class RecurrentVolatilityModel:
         learning_rate: float,
     ) -> None:
         """
-        Build an LSTM or GRU model.
+        Build an LSTM or GRU model
 
         :param model_type: either 'lstm' or 'gru'
         :param lags: sequence length
@@ -372,7 +360,7 @@ class RecurrentVolatilityModel:
 
     def _build_model(self) -> Sequential:
         """
-        Build the Keras architecture.
+        Build and compile the Keras Sequential architecture for HL prediction
 
         :return: compiled Keras Sequential model
         """
@@ -383,6 +371,8 @@ class RecurrentVolatilityModel:
         else:
             raise ValueError("model_type doit etre 'lstm' ou 'gru'.")
 
+        # Architecture: recurrent layer -> light dropout to reduce overfitting
+        # -> small dense layer for non-linear projection -> scalar output
         model = Sequential(
             [
                 Input(shape=(self.lags, 1)),
@@ -394,18 +384,20 @@ class RecurrentVolatilityModel:
         )
         model.compile(
             optimizer=Adam(learning_rate=self.learning_rate),
-            loss="mse",
+            loss="mse",  # MSE loss is consistent with RMSE evaluation metric.
         )
         return model
 
     def fit(self, split_data: SplitData, epochs: int, batch_size: int) -> None:
         """
-        Train the model and store its training duration.
+        Train the model and store its training duration
 
-        :param split_data: train, validation and test arrays
-        :param epochs: maximum number of epochs
+        :param split_data: split dataset (only x_train, y_train, x_validation, y_validation are used)
+        :param epochs: maximum number of training epochs
         :param batch_size: mini-batch size
         """
+        # Stop training if validation loss does not improve for 3 consecutive
+        # epochs, and restore the weights from the best epoch.
         early_stopping = EarlyStopping(
             monitor="val_loss",
             patience=3,
@@ -425,25 +417,25 @@ class RecurrentVolatilityModel:
 
     def predict(self, split_data: SplitData) -> np.ndarray:
         """
-        Predict High-Low values on the test set and reverse the scaling.
+        Predict High-Low values on the test set and reverse the scaling
 
-        :param split_data: train, validation and test arrays
+        :param split_data: split dataset (only x_test and y_scaler are used)
         :return: predictions in original High-Low units
         """
         scaled_predictions = self.model.predict(split_data.x_test, verbose=0).ravel()
-        return split_data.scaler.inverse_transform(
+        return split_data.y_scaler.inverse_transform(
             scaled_predictions.reshape(-1, 1)
         ).ravel()
 
 
 class ResultVisualizer:
     """
-    Create plots comparing real and predicted High-Low values.
+    Create plots comparing real and predicted High-Low values
     """
 
     def __init__(self, output_dir: Path) -> None:
         """
-        Store the output directory for generated figures.
+        Store the output directory for generated figures
 
         :param output_dir: destination directory
         """
@@ -456,7 +448,7 @@ class ResultVisualizer:
         ticker: str,
     ) -> None:
         """
-        Plot observed and predicted High-Low series for one ticker.
+        Plot observed and predicted High-Low series for one ticker
 
         :param results: prediction table
         :param ticker: ticker to plot
@@ -488,7 +480,7 @@ class ResultVisualizer:
 
     def plot_scatter(self, results: pd.DataFrame) -> None:
         """
-        Plot actual values against model predictions for the whole test set.
+        Plot actual values against model predictions for the whole test set
 
         :param results: prediction table
         """
@@ -522,7 +514,7 @@ class ResultVisualizer:
 
 def evaluate_predictions(actual: np.ndarray, predicted: np.ndarray) -> Dict[str, float]:
     """
-    Compute RMSE and R2 scores.
+    Compute RMSE and R2 scores
 
     :param actual: observed High-Low values
     :param predicted: predicted High-Low values
@@ -540,7 +532,7 @@ def build_prediction_table(
     gru_predictions: np.ndarray,
 ) -> pd.DataFrame:
     """
-    Build a DataFrame containing actual and predicted test values.
+    Build a DataFrame containing actual and predicted test values
 
     :param split_data: split arrays and test metadata
     :param lstm_predictions: LSTM predictions in original units
@@ -551,6 +543,7 @@ def build_prediction_table(
     results["actual_hl"] = split_data.y_test
     results["lstm_prediction"] = lstm_predictions
     results["gru_prediction"] = gru_predictions
+    # Error = predicted - actual: positive means overestimate, negative means underestimate.
     results["lstm_error"] = results["lstm_prediction"] - results["actual_hl"]
     results["gru_error"] = results["gru_prediction"] - results["actual_hl"]
     return results
@@ -562,13 +555,17 @@ def write_conclusion(
     results: pd.DataFrame,
 ) -> None:
     """
-    Save a critical interpretation of the model results.
+    Save a critical interpretation of the model results
 
     :param output_dir: directory where outputs are saved
     :param metrics: model metrics table
     :param results: prediction table
     """
-    best_model = metrics.sort_values("rmse").iloc[0]["model"]
+    best_row = metrics.sort_values("rmse").iloc[0]
+    best_model = best_row["model"]
+    best_rmse = best_row["rmse"]
+    best_r2 = best_row["r2"]
+
     worst_lstm = results.assign(abs_error=results["lstm_error"].abs()).nlargest(
         5, "abs_error"
     )
@@ -581,8 +578,9 @@ def write_conclusion(
         "====================",
         "",
         (
-            f"Le meilleur modele selon le RMSE est {best_model}. "
-            "Les deux reseaux recurrentes utilisent seulement les valeurs passees "
+            f"Le meilleur modele selon le RMSE est {best_model} "
+            f"(RMSE = {best_rmse:.4f}, R2 = {best_r2:.4f}). "
+            "Les deux reseaux recurrents utilisent seulement les valeurs passees "
             "de High - Low ; ils capturent donc la dynamique generale, mais les "
             "pics soudains de volatilite restent difficiles a anticiper."
         ),
@@ -612,9 +610,10 @@ def run_project(arguments: argparse.Namespace) -> None:
 
     :param arguments: command-line arguments
     """
-    data_path = Path(arguments.data) if arguments.data else find_default_csv_path()
+    data_path = Path(arguments.data) if arguments.data else Path(__file__).resolve().parent / "cac40.csv"
     output_dir = Path(arguments.output)
 
+    # Taches 1, 3, 4, 5 : lecture, statistiques et betas
     data = read_data(data_path)
     analyzer = MarketAnalyzer(data=data, risk_free_rate=RISK_FREE_RATE)
     analyzer.add_returns()
@@ -626,6 +625,7 @@ def run_project(arguments: argparse.Namespace) -> None:
     print("Apercu des statistiques par ticker :")
     print(summary.head().to_string(index=False))
 
+    # Tache 6 : construction des sequences et entrainement LSTM / GRU
     sequence_builder = SequenceDatasetBuilder(analyzer.data, lags=arguments.lags)
     split_data = sequence_builder.build()
 
@@ -668,12 +668,15 @@ def run_project(arguments: argparse.Namespace) -> None:
         ]
     )
 
+    # Tache 7 : sauvegarde des resultats et visualisation
     output_dir.mkdir(parents=True, exist_ok=True)
     results.to_csv(output_dir / "predictions_test.csv", index=False)
     metrics.to_csv(output_dir / "model_metrics.csv", index=False)
     write_conclusion(output_dir, metrics, results)
 
     visualizer = ResultVisualizer(output_dir)
+
+    # Plot the first N tickers alphabetically as a representative sample.
     selected_tickers = sorted(results["ticker"].unique())[: arguments.plot_tickers]
     for ticker in selected_tickers:
         visualizer.plot_ticker_predictions(results, ticker)
@@ -686,7 +689,7 @@ def run_project(arguments: argparse.Namespace) -> None:
 
 def parse_arguments() -> argparse.Namespace:
     """
-    Parse command-line arguments for the project.
+    Parse command-line arguments for the project
 
     :return: parsed arguments
     """

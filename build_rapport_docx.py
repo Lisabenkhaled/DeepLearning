@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Build the Word report for the CAC 40 LSTM/GRU project.
+Build the Word report for the CAC 40 LSTM/GRU project
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ from typing import Iterable, List, Sequence
 
 import pandas as pd
 from docx import Document
-from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_ALIGN_VERTICAL
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
@@ -37,7 +36,7 @@ def set_run_font(
     italic: bool | None = None,
 ) -> None:
     """
-    Apply the report font settings to a run.
+    Apply the report font settings to a run
 
     :param run: Word run to format
     :param size: optional font size in points
@@ -60,7 +59,7 @@ def set_run_font(
 
 def set_cell_shading(cell, fill: str) -> None:
     """
-    Apply background shading to a table cell.
+    Apply background shading to a table cell
 
     :param cell: table cell
     :param fill: hexadecimal fill color without '#'
@@ -73,10 +72,10 @@ def set_cell_shading(cell, fill: str) -> None:
 
 def set_cell_margins(cell, top: int = 80, bottom: int = 80) -> None:
     """
-    Apply explicit cell margins in DXA.
+    Apply explicit cell margins in DXA 
 
     :param cell: table cell
-    :param top: top margin in DXA
+    :param top: top margin in DXA (80 DXA = 1.4 mm)
     :param bottom: bottom margin in DXA
     """
     tc_pr = cell._tc.get_or_add_tcPr()
@@ -100,7 +99,7 @@ def set_cell_margins(cell, top: int = 80, bottom: int = 80) -> None:
 
 def set_table_borders(table) -> None:
     """
-    Apply restrained single-grid borders to a table.
+    Apply restrained single-grid borders to a table
 
     :param table: Word table
     """
@@ -124,7 +123,7 @@ def set_table_borders(table) -> None:
 
 def set_table_width(table, widths: Sequence[float]) -> None:
     """
-    Apply fixed widths to all cells in a table.
+    Apply fixed widths to all cells in a table
 
     :param table: Word table
     :param widths: column widths in inches
@@ -139,7 +138,7 @@ def set_table_width(table, widths: Sequence[float]) -> None:
 
 def configure_document(doc: Document) -> None:
     """
-    Configure page geometry and report styles.
+    Configure page geometry and report styles
 
     :param doc: Word document
     """
@@ -184,7 +183,7 @@ def configure_document(doc: Document) -> None:
 
 def add_title_block(doc: Document) -> None:
     """
-    Add the first-page title block.
+    Add the first-page title block
 
     :param doc: Word document
     """
@@ -222,7 +221,7 @@ def add_title_block(doc: Document) -> None:
 
 def add_paragraph(doc: Document, text: str) -> None:
     """
-    Add a standard body paragraph.
+    Add a standard body paragraph
 
     :param doc: Word document
     :param text: paragraph text
@@ -233,7 +232,7 @@ def add_paragraph(doc: Document, text: str) -> None:
 
 def add_bullets(doc: Document, items: Iterable[str]) -> None:
     """
-    Add bullet paragraphs using Word's list style.
+    Add bullet paragraphs using Word's list style
 
     :param doc: Word document
     :param items: bullet item texts
@@ -247,7 +246,7 @@ def add_bullets(doc: Document, items: Iterable[str]) -> None:
 
 def add_metrics_table(doc: Document, metrics: pd.DataFrame) -> None:
     """
-    Add the LSTM/GRU metrics table.
+    Add the LSTM/GRU metrics table
 
     :param doc: Word document
     :param metrics: model metrics
@@ -277,7 +276,7 @@ def add_metrics_table(doc: Document, metrics: pd.DataFrame) -> None:
 
 def describe_bias(mean_error: float) -> str:
     """
-    Describe whether a model tends to overestimate or underestimate.
+    Describe whether a model tends to overestimate or underestimate
 
     :param mean_error: average prediction error
     :return: textual interpretation
@@ -355,8 +354,9 @@ def add_explicit_answers(
         (
             "L'un des deux modèles capture-t-il mieux les pics de volatilité ? "
             "Les deux modèles capturent la dynamique générale mais sous-estiment "
-            "les pics. Dans cette expérience, le GRU présente un léger avantage "
-            "global en RMSE/R² et un temps d'entraînement plus court."
+            f"les pics. Dans cette expérience, {best['model']} présente un léger "
+            f"avantage global (RMSE {best['rmse']:.4f}, R² {best['r2']:.4f}) "
+            f"et {fastest['model']} est le plus rapide à entraîner."
         ),
         (
             "Conclusion sur la capacité des modèles : les modèles LSTM et GRU "
@@ -371,7 +371,7 @@ def add_explicit_answers(
 
 def add_stats_table(doc: Document, summary: pd.DataFrame) -> None:
     """
-    Add an excerpt of ticker-level statistics.
+    Add an excerpt of ticker-level statistics
 
     :param doc: Word document
     :param summary: ticker summary
@@ -409,7 +409,7 @@ def add_picture_with_caption(
     width: float = 5.9,
 ) -> None:
     """
-    Add a figure and caption if the image exists.
+    Add a figure and caption if the image exists
 
     :param doc: Word document
     :param image_path: figure path
@@ -432,7 +432,7 @@ def add_picture_with_caption(
 
 def build_report() -> None:
     """
-    Build the complete project report.
+    Build the complete Word report from the CSV outputs in the outputs directory
     """
     metrics = pd.read_csv(OUTPUT_DIR / "model_metrics.csv")
     summary = pd.read_csv(OUTPUT_DIR / "ticker_summary.csv")
@@ -604,9 +604,10 @@ def build_report() -> None:
         "statistiques, estimation des bêtas, construction de séquences, "
         "entraînement des modèles et visualisation. Les résultats indiquent que "
         "les réseaux LSTM et GRU peuvent anticiper le niveau moyen de volatilité "
-        "journalière, mais restent limités face aux pics soudains. Dans cette "
-        "expérience, le GRU présente le meilleur compromis entre performance et "
-        "rapidité d'entraînement."
+        f"journalière, mais restent limités face aux pics soudains. Dans cette "
+        f"expérience, {best['model']} obtient le meilleur RMSE ({best['rmse']:.4f}) "
+        f"et {fastest['model']} est le plus rapide à entraîner "
+        f"({fastest['training_time_seconds']:.1f} s)."
     )
 
     doc.save(DOCX_PATH)

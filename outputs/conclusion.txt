@@ -1,22 +1,22 @@
 Conclusion critique
 ====================
 
-Le meilleur modele selon le RMSE est GRU. Les deux reseaux recurrentes utilisent seulement les valeurs passees de High - Low ; ils capturent donc la dynamique generale, mais les pics soudains de volatilite restent difficiles a anticiper.
+Le meilleur modele selon le RMSE est LSTM (RMSE = 0.6404, R2 = 0.6137). Les deux reseaux recurrents utilisent seulement les valeurs passees de High - Low ; ils capturent donc la dynamique generale, mais les pics soudains de volatilite restent difficiles a anticiper.
 
 Periodes avec les plus fortes erreurs LSTM :
 ticker       date  actual_hl  lstm_prediction  lstm_error
-    DG 2016-11-22      12.27         1.169573  -11.100427
-   KER 2017-07-28      17.50         6.430896  -11.069104
-    OR 2016-06-24      13.90         3.343541  -10.556459
-   KER 2017-10-25      13.40         4.054834   -9.345166
-    UL 2016-06-24      13.10         4.234798   -8.865202
+   KER 2017-07-28      17.50         6.309541  -11.190459
+    DG 2016-11-22      12.27         1.149068  -11.120932
+    OR 2016-06-24      13.90         3.335020  -10.564980
+   KER 2017-10-25      13.40         4.032351   -9.367649
+    UL 2016-06-24      13.10         4.189589   -8.910411
 
 Periodes avec les plus fortes erreurs GRU :
 ticker       date  actual_hl  gru_prediction  gru_error
-   KER 2017-07-28      17.50        6.214620 -11.285380
-    DG 2016-11-22      12.27        1.211555 -11.058445
-    OR 2016-06-24      13.90        3.291857 -10.608143
-   KER 2017-10-25      13.40        4.141595  -9.258405
-    UL 2016-06-24      13.10        4.157876  -8.942124
+   KER 2017-07-28      17.50        6.403427 -11.096573
+    DG 2016-11-22      12.27        1.184826 -11.085174
+    OR 2016-06-24      13.90        3.373281 -10.526719
+   KER 2017-10-25      13.40        4.171397  -9.228603
+    UL 2016-06-24      13.10        4.211044  -8.888956
 
 Une erreur elevee apparait generalement quand le High - Low observe augmente brutalement par rapport aux jours precedents. Ce comportement est coherent avec les marches financiers : une information nouvelle peut provoquer un saut de volatilite que les seuls lags ne contiennent pas encore.
