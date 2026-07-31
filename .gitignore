@@ -3,3 +3,6 @@ __pycache__/
 .ipynb_checkpoints/
 rapport_render/
 
+.venv/
+__pycache__/
+.DS_Store
